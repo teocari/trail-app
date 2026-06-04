@@ -2,8 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Mountain, Calendar, Target, Utensils, LayoutDashboard, User } from 'lucide-react'
+import { Mountain, Calendar, Target, Utensils, LayoutDashboard, User, LogIn, LogOut, Cloud, Loader2, CheckCircle2 } from 'lucide-react'
 import { useTrailStore } from '@/lib/store'
+import { supabase } from '@/lib/supabase'
+import { useState } from 'react'
+import AuthModal from './AuthModal'
 
 const navItems = [
   { href: '/', label: 'Tableau de bord', icon: LayoutDashboard },
@@ -15,9 +18,24 @@ const navItems = [
 export default function Navigation() {
   const pathname = usePathname()
   const setShowProfileEdit = useTrailStore(s => s.setShowProfileEdit)
+  const userId = useTrailStore(s => s.userId)
+  const setUserId = useTrailStore(s => s.setUserId)
+  const isSyncing = useTrailStore(s => s.isSyncing)
+  const lastSynced = useTrailStore(s => s.lastSynced)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    setUserId(null)
+  }
+
+  // Extract a short email display
+  const userEmail = userId ? 'Connecté' : null
 
   return (
     <>
+      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+
       {/* Sidebar desktop */}
       <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-surface border-r border-surface-2 fixed left-0 top-0 z-40">
         <div className="flex items-center gap-3 px-6 py-5 border-b border-surface-2">
@@ -56,7 +74,48 @@ export default function Navigation() {
             <User size={18} />
             <span className="text-sm font-medium">Mon profil</span>
           </button>
-          <p className="text-xs text-gray-600 text-center">v1.0.0</p>
+
+          {userId ? (
+            <>
+              {/* Sync status */}
+              <div className="flex items-center gap-2 px-4 py-1.5">
+                {isSyncing ? (
+                  <Loader2 size={13} className="text-gray-400 animate-spin" />
+                ) : lastSynced ? (
+                  <CheckCircle2 size={13} className="text-[#22c55e]" />
+                ) : (
+                  <Cloud size={13} className="text-gray-500" />
+                )}
+                <span className="text-xs text-gray-500">
+                  {isSyncing ? 'Synchronisation...' : lastSynced ? 'Synchronisé' : 'Cloud activé'}
+                </span>
+              </div>
+
+              {/* User email display */}
+              <div className="px-4 py-1.5">
+                <p className="text-xs text-gray-400 truncate">{userEmail}</p>
+              </div>
+
+              {/* Sign out */}
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-900/10 transition-all"
+              >
+                <LogOut size={16} />
+                <span className="text-sm font-medium">Se déconnecter</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[#22c55e] hover:bg-[#22c55e]/10 transition-all border border-[#22c55e]/20"
+            >
+              <LogIn size={16} />
+              <span className="text-sm font-semibold">Se connecter</span>
+            </button>
+          )}
+
+          <p className="text-xs text-gray-600 text-center">v2.0.0</p>
         </div>
       </aside>
 

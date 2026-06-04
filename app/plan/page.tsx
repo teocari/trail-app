@@ -4,28 +4,61 @@ import { useState } from 'react'
 import { useTrailStore } from '@/lib/store'
 import WeekView from '@/components/WeekView'
 import { getCurrentWeek, computeAdaptation, getPhaseLabel, getPhaseColor } from '@/lib/training'
+import type { TrainingWeekExtended } from '@/lib/training'
 import { SessionStatus } from '@/lib/types'
-import { Calendar, Zap, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar, Zap, AlertCircle, Trophy, Flag, ChevronDown, ChevronUp } from 'lucide-react'
 
 const TODAY = new Date('2026-06-03')
 
 const PHASE_FILTERS = ['Toutes', 'Base', 'Build', 'Specific', 'Peak', 'Taper'] as const
 
+function PriorityBadge({ priority }: { priority: string }) {
+  const styles: Record<string, string> = {
+    A: 'bg-red-900/40 text-red-300 border-red-500/40',
+    B: 'bg-orange-900/40 text-orange-300 border-orange-500/40',
+    C: 'bg-gray-700/60 text-gray-300 border-gray-500/40',
+  }
+  return (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${styles[priority] ?? styles['C']}`}>
+      {priority}
+    </span>
+  )
+}
+
+// Group weeks by blockLabel
+function groupWeeksByBlock(weeks: TrainingWeekExtended[]) {
+  const groups: { label: string; priority?: string; isRecovery: boolean; weeks: TrainingWeekExtended[] }[] = []
+  let currentLabel: string | undefined = undefined
+  for (const week of weeks) {
+    const label = week.blockLabel ?? 'Plan'
+    if (label !== currentLabel) {
+      currentLabel = label
+      groups.push({
+        label,
+        priority: week.targetRacePriority,
+        isRecovery: !!week.isPostRaceRecovery,
+        weeks: [week],
+      })
+    } else {
+      groups[groups.length - 1].weeks.push(week)
+    }
+  }
+  return groups
+}
+
 export default function PlanPage() {
   const { trainingWeeks, updateSessionStatus, applyAdaptation } = useTrailStore()
   const [phaseFilter, setPhaseFilter] = useState<string>('Toutes')
   const [showOnlyCurrent, setShowOnlyCurrent] = useState(false)
+  const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set())
 
+  const extendedWeeks = trainingWeeks as TrainingWeekExtended[]
   const currentWeek = getCurrentWeek(trainingWeeks, TODAY)
 
   const handleStatusChange = (weekNumber: number, sessionId: string, status: SessionStatus) => {
     updateSessionStatus(weekNumber, sessionId, status)
-
-    // After updating, check if we need to apply adaptation to next week
     const updatedWeek = trainingWeeks.find(w => w.weekNumber === weekNumber)
     if (!updatedWeek) return
-
-    // We need to simulate the update
     const fakeWeek = {
       ...updatedWeek,
       sessions: updatedWeek.sessions.map(s =>
@@ -38,7 +71,7 @@ export default function PlanPage() {
     }
   }
 
-  const filteredWeeks = trainingWeeks.filter(w => {
+  const filteredWeeks = extendedWeeks.filter(w => {
     if (showOnlyCurrent) return w.weekNumber === currentWeek?.weekNumber
     if (phaseFilter === 'Toutes') return true
     return w.phase === phaseFilter
@@ -47,10 +80,20 @@ export default function PlanPage() {
   const phases = Array.from(new Set(trainingWeeks.map(w => w.phase)))
   const totalWeeks = trainingWeeks.length
 
-  // Stats
   const totalPlanned = trainingWeeks.reduce((sum, w) => sum + w.sessions.length, 0)
   const totalDone = trainingWeeks.reduce((sum, w) => sum + w.sessions.filter(s => s.status === 'done').length, 0)
   const totalMissed = trainingWeeks.reduce((sum, w) => sum + w.sessions.filter(s => s.status === 'missed').length, 0)
+
+  const groups = groupWeeksByBlock(filteredWeeks)
+
+  const toggleBlock = (label: string) => {
+    setCollapsedBlocks(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -61,7 +104,7 @@ export default function PlanPage() {
           Plan d'Entraînement
         </h1>
         <p className="text-gray-400 text-sm mt-1">
-          Plan périodisé sur {totalWeeks} semaines · Polarisé 80/20
+          Plan multi-courses périodisé sur {totalWeeks} semaines
         </p>
       </div>
 
@@ -133,29 +176,81 @@ export default function PlanPage() {
                 : 'bg-surface border-surface-2 text-gray-400 hover:text-white'
             }`}
           >
-            {f === 'Toutes' ? f : getPhaseLabel(f as any)}
+            {f === 'Toutes' ? f : getPhaseLabel(f as Parameters<typeof getPhaseLabel>[0])}
           </button>
         ))}
       </div>
 
-      {/* Weeks */}
-      <div className="space-y-3">
+      {/* Weeks grouped by race block */}
+      <div className="space-y-6">
         {filteredWeeks.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <Calendar size={40} className="mx-auto mb-3 text-gray-600" />
             <p>Aucune semaine correspondant au filtre</p>
           </div>
         ) : (
-          filteredWeeks.map(week => (
-            <WeekView
-              key={week.weekNumber}
-              week={week}
-              isCurrentWeek={week.weekNumber === currentWeek?.weekNumber}
-              onStatusChange={(sessionId, status) =>
-                handleStatusChange(week.weekNumber, sessionId, status)
-              }
-            />
-          ))
+          groups.map(group => {
+            const isCollapsed = collapsedBlocks.has(group.label)
+            return (
+              <div key={group.label} className="space-y-3">
+                {/* Block header */}
+                <button
+                  onClick={() => toggleBlock(group.label)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-500 transition-all group"
+                >
+                  {group.isRecovery ? (
+                    <span className="text-base">🔄</span>
+                  ) : (
+                    <Trophy size={15} className={
+                      group.priority === 'A' ? 'text-red-400' :
+                      group.priority === 'B' ? 'text-orange-400' : 'text-gray-400'
+                    } />
+                  )}
+                  <span className="flex-1 text-sm font-semibold text-white text-left">{group.label}</span>
+                  {group.priority && !group.isRecovery && (
+                    <PriorityBadge priority={group.priority} />
+                  )}
+                  <span className="text-xs text-gray-500">{group.weeks.length} sem.</span>
+                  {isCollapsed
+                    ? <ChevronDown size={14} className="text-gray-400 group-hover:text-white" />
+                    : <ChevronUp size={14} className="text-gray-400 group-hover:text-white" />
+                  }
+                </button>
+
+                {/* Weeks */}
+                {!isCollapsed && (
+                  <div className="space-y-3 pl-2 border-l-2 border-slate-700/50 ml-2">
+                    {group.weeks.map(week => {
+                      const isRaceWeek = week.phase === 'Race'
+                      return (
+                        <div key={week.weekNumber} className="space-y-1">
+                          {/* Target race label */}
+                          {week.targetRaceName && (
+                            <div className="flex items-center gap-1.5 ml-2 mb-1">
+                              <Flag size={11} className="text-gray-500" />
+                              <span className="text-[10px] text-gray-500">
+                                Objectif : {week.targetRaceName}
+                                {isRaceWeek && (
+                                  <span className="ml-1 text-[#22c55e] font-bold">🏁 SEMAINE DE COURSE</span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                          <WeekView
+                            week={week}
+                            isCurrentWeek={week.weekNumber === currentWeek?.weekNumber}
+                            onStatusChange={(sessionId, status) =>
+                              handleStatusChange(week.weekNumber, sessionId, status)
+                            }
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })
         )}
       </div>
 
@@ -182,7 +277,8 @@ export default function PlanPage() {
           ))}
         </div>
         <p className="text-xs text-gray-500 mt-3">
-          <span className="text-white">80/20 polarisé</span> : 80% du volume en Z1-Z2, 20% en Z4-Z5. Éviter Z3 systématiquement.
+          <span className="text-white">Modèle polarisé</span> : 80% du volume en Z1-Z2, 20% en Z4-Z5.
+          Pour élite/confirmé : méthode norvégienne double seuil en phases Développement et Spécifique.
         </p>
       </div>
     </div>
