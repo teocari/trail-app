@@ -7,12 +7,13 @@ import { useTrailStore } from '@/lib/store'
 
 interface AuthModalProps {
   onClose: () => void
+  defaultTab?: 'login' | 'signup'
 }
 
 type Tab = 'connexion' | 'inscription'
 
-export default function AuthModal({ onClose }: AuthModalProps) {
-  const [tab, setTab] = useState<Tab>('connexion')
+export default function AuthModal({ onClose, defaultTab }: AuthModalProps) {
+  const [tab, setTab] = useState<Tab>(defaultTab === 'signup' ? 'inscription' : 'connexion')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')

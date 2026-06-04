@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useTrailStore } from '@/lib/store'
 import { AthleteProfile, RunnerLevel, RaceType } from '@/lib/types'
-import { Mountain, ChevronRight, ChevronLeft, CheckCircle2, User, Activity, Gauge, Dumbbell } from 'lucide-react'
+import { Mountain, ChevronRight, ChevronLeft, CheckCircle2, User, Activity, Gauge, Dumbbell, LogIn, UserPlus, UserX } from 'lucide-react'
+import AuthModal from './AuthModal'
 
 const STEPS = [
   { id: 1, label: 'Identité', icon: User },
@@ -45,7 +46,9 @@ const LEVELS: { value: RunnerLevel; label: string; sub: string; weeklyKm: string
 
 export default function Onboarding() {
   const { setProfile } = useTrailStore()
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(0)
+  const [showAuth, setShowAuth] = useState(false)
+  const [authTab, setAuthTab] = useState<'login' | 'signup'>('signup')
 
   const [firstName, setFirstName] = useState('')
   const [level, setLevel] = useState<RunnerLevel>('confirme')
@@ -61,6 +64,10 @@ export default function Onboarding() {
   const canNext = () => {
     if (step === 1) return firstName.trim().length > 0
     return true
+  }
+
+  if (showAuth) {
+    return <AuthModal onClose={() => setShowAuth(false)} defaultTab={authTab} />
   }
 
   const handleFinish = () => {
@@ -92,8 +99,8 @@ export default function Onboarding() {
           </div>
         </div>
 
-        {/* Step indicators */}
-        <div className="flex px-6 pt-5 gap-2">
+        {/* Step indicators — only show after auth screen */}
+        <div className={`flex px-6 pt-5 gap-2 ${step === 0 ? 'hidden' : ''}`}>
           {STEPS.map((s) => {
             const Icon = s.icon
             const active = s.id === step
@@ -118,6 +125,47 @@ export default function Onboarding() {
 
         {/* Content */}
         <div className="px-6 py-5 min-h-[340px]">
+
+          {step === 0 && (
+            <div className="flex flex-col items-center justify-center h-full space-y-6 py-4">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-white">Bienvenue sur TrailElite 🏔️</h2>
+                <p className="text-sm text-gray-400 mt-2">Choisis comment tu veux commencer</p>
+              </div>
+              <div className="w-full space-y-3">
+                <button
+                  onClick={() => { setAuthTab('signup'); setShowAuth(true) }}
+                  className="w-full flex items-center gap-3 bg-accent text-black font-semibold px-5 py-3.5 rounded-xl hover:bg-accent/90 transition-all"
+                >
+                  <UserPlus size={18} />
+                  <div className="text-left">
+                    <p className="text-sm font-bold">Créer un compte</p>
+                    <p className="text-xs font-normal opacity-70">Sauvegarde ton programme dans le cloud</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setAuthTab('login'); setShowAuth(true) }}
+                  className="w-full flex items-center gap-3 bg-surface-2 border border-surface-2 text-white font-semibold px-5 py-3.5 rounded-xl hover:border-accent/50 transition-all"
+                >
+                  <LogIn size={18} className="text-accent" />
+                  <div className="text-left">
+                    <p className="text-sm font-bold">Se connecter</p>
+                    <p className="text-xs font-normal text-gray-400">J'ai déjà un compte</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setStep(1)}
+                  className="w-full flex items-center gap-3 bg-surface-2/50 border border-surface-2/50 text-gray-400 px-5 py-3.5 rounded-xl hover:text-white transition-all"
+                >
+                  <UserX size={18} />
+                  <div className="text-left">
+                    <p className="text-sm font-semibold">Continuer en tant qu'invité</p>
+                    <p className="text-xs text-gray-500">Données sauvegardées uniquement sur cet appareil</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
 
           {step === 1 && (
             <div className="space-y-5">
@@ -308,7 +356,7 @@ export default function Onboarding() {
                           : 'bg-surface-2 text-gray-400 border-surface-2 hover:text-white'
                       }`}
                     >
-                      {t === 'XC' ? 'Cross' : t}
+                      {t === 'XC' ? 'Course sur route' : t === 'Trail' ? 'Court Trail' : 'Ultra'}
                     </button>
                   ))}
                 </div>
@@ -318,7 +366,7 @@ export default function Onboarding() {
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-6 flex items-center justify-between">
+        <div className={`px-6 pb-6 flex items-center justify-between ${step === 0 ? 'hidden' : ''}`}>
           <button
             onClick={() => setStep(s => s - 1)}
             disabled={step === 1}

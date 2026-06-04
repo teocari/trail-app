@@ -6,38 +6,9 @@ import { Race, TrainingWeek, TrainingSession, SessionStatus, AthleteProfile } fr
 import { generateTrainingPlan } from './training'
 import { supabase } from './supabase'
 
-// Mock data
-const MOCK_RACES: Race[] = [
-  {
-    id: 'race-1',
-    name: 'UTMB Mont-Blanc',
-    date: '2026-08-28',
-    distanceKm: 171,
-    elevationGain: 10000,
-    type: 'Ultra',
-    priority: 'A',
-  },
-  {
-    id: 'race-2',
-    name: 'Maxi-Race Annecy',
-    date: '2026-07-11',
-    distanceKm: 85,
-    elevationGain: 5400,
-    type: 'Trail',
-    priority: 'B',
-  },
-  {
-    id: 'race-3',
-    name: 'Trail des Montagnes du Giffre',
-    date: '2026-06-28',
-    distanceKm: 42,
-    elevationGain: 2800,
-    type: 'Trail',
-    priority: 'C',
-  },
-]
+const MOCK_RACES: Race[] = []
 
-const TODAY = new Date('2026-06-03')
+const TODAY = new Date()
 const INITIAL_PLAN = generateTrainingPlan(MOCK_RACES, TODAY)
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null
