@@ -46,12 +46,26 @@ export interface GpxPoint {
   distFromStartKm: number
 }
 
+// Gradient classification — more granular than old 3-state
+export type GradientClass =
+  | 'very_steep_up'    // > 20%
+  | 'steep_up'         // 10-20%
+  | 'moderate_up'      // 5-10%
+  | 'false_flat_up'    // 2-5%
+  | 'flat'             // -2% to 2%
+  | 'false_flat_down'  // -2% to -5%
+  | 'moderate_down'    // -5% to -10%
+  | 'steep_down'       // -10% to -20%
+  | 'very_steep_down'  // < -20%
+
 export interface GpxSegment {
   startDistKm: number
   endDistKm: number
   distanceKm: number
   elevationChange: number
   gradient: number
+  gradientClass: GradientClass
+  // legacy field kept for backward compat (derived from gradientClass)
   type: 'climb' | 'descent' | 'flat'
   avgPaceForProfile: string
   expectedTimeMin: number
@@ -62,6 +76,7 @@ export interface RacePaceCheckpoint {
   elapsedMin: number
   segmentPace: string
   segmentType: 'climb' | 'descent' | 'flat'
+  gradient: number
   elevationAtPoint: number
   notes: string
 }
@@ -75,7 +90,22 @@ export interface RaceNutritionCheckpoint {
   waterMl: number
   sodiumMg: number
   gels: number
+  gelProduct: string
+  barProduct: string
+  electrolyteProduct: string
+  timing: 'before_climb' | 'at_summit' | 'on_descent' | 'checkpoint' | 'regular'
+  urgency: 'critical' | 'important' | 'routine'
   recommendation: string
+}
+
+export interface RaceKeyWaypoint {
+  distanceKm: number
+  elevationM: number
+  name: string
+  type: 'summit' | 'valley' | 'checkpoint' | 'start' | 'finish'
+  expectedTimeMin: number
+  gradientBefore: number
+  notes: string
 }
 
 export interface GpxAnalysis {
@@ -89,7 +119,33 @@ export interface GpxAnalysis {
   avgGradientClimb: number
   paceCheckpoints: RacePaceCheckpoint[]
   nutritionCheckpoints: RaceNutritionCheckpoint[]
+  keyWaypoints: RaceKeyWaypoint[]
   estimatedFinishTimeMin: number
+}
+
+// Nutrition preferences
+export type GelBrand = 'maurten' | 'sis' | 'gu' | 'generic'
+export type BarBrand = 'maurten_bar' | 'clif' | 'real_food' | 'mix'
+export type ElectrolyteBrand = 'precision_hydration' | 'sis_hydro' | 'maurten_caf' | 'tabs'
+export type StomachSensitivity = 'sensitive' | 'normal' | 'iron'
+
+export interface NutritionPreferences {
+  gelBrand: GelBrand
+  barBrand: BarBrand
+  electrolyteBrand: ElectrolyteBrand
+  stomachSensitivity: StomachSensitivity
+  solidFoodTolerance: 'none' | 'some' | 'lots'
+  caffeineOk: boolean
+}
+
+export interface GelProduct {
+  brand: GelBrand
+  name: string
+  carbsG: number
+  sodiumMg: number
+  caffeineOk: boolean
+  needsWater: boolean
+  notes: string
 }
 
 export interface Race {
@@ -103,6 +159,7 @@ export interface Race {
   goalTimeMin?: number
   specs?: RaceSpecs
   gpxAnalysis?: GpxAnalysis
+  nutritionPrefs?: NutritionPreferences
 }
 
 export type SessionType = 'EF' | 'LS' | 'T' | 'I' | 'V' | 'R' | 'S'

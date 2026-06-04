@@ -3,7 +3,10 @@
 import { useState, useRef } from 'react'
 import { useTrailStore } from '@/lib/store'
 import RaceCard from '@/components/RaceCard'
-import { Race, RaceType, RacePriority, TerrainType, WeatherCondition, RaceSpecs, GpxAnalysis } from '@/lib/types'
+import {
+  Race, RaceType, RacePriority, TerrainType, WeatherCondition, RaceSpecs, GpxAnalysis,
+  NutritionPreferences, GelBrand, BarBrand, ElectrolyteBrand, StomachSensitivity,
+} from '@/lib/types'
 import { Plus, Trophy, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { parseGpx, analyzeGpx } from '@/lib/gpx'
 
@@ -39,6 +42,39 @@ const weatherOptions: { value: WeatherCondition; label: string }[] = [
   { value: 'chaud', label: 'Canicule >30°C' },
 ]
 
+const gelBrands: { value: GelBrand; label: string }[] = [
+  { value: 'maurten', label: 'Maurten Gel 100' },
+  { value: 'sis',     label: 'SiS Go Isotonic' },
+  { value: 'gu',      label: 'GU Energy' },
+  { value: 'generic', label: 'Générique' },
+]
+
+const barBrands: { value: BarBrand; label: string }[] = [
+  { value: 'maurten_bar', label: 'Maurten Solid' },
+  { value: 'clif',        label: 'Clif Bar' },
+  { value: 'real_food',   label: 'Alimentation naturelle' },
+  { value: 'mix',         label: 'Mix' },
+]
+
+const electrolyteBrands: { value: ElectrolyteBrand; label: string }[] = [
+  { value: 'precision_hydration', label: 'Precision Hydration 1000' },
+  { value: 'sis_hydro',           label: 'SiS Hydro' },
+  { value: 'maurten_caf',         label: 'Maurten Drink Mix' },
+  { value: 'tabs',                label: 'Comprimés' },
+]
+
+const stomachOptions: { value: StomachSensitivity; label: string }[] = [
+  { value: 'sensitive', label: 'Sensible' },
+  { value: 'normal',    label: 'Normal' },
+  { value: 'iron',      label: 'Estomac d\'acier' },
+]
+
+const solidFoodOptions: { value: 'none' | 'some' | 'lots'; label: string }[] = [
+  { value: 'none', label: 'Non' },
+  { value: 'some', label: 'Un peu' },
+  { value: 'lots', label: 'Oui' },
+]
+
 interface FormState {
   name: string
   date: string
@@ -57,6 +93,14 @@ interface FormState {
   weatherCondition: WeatherCondition
   startTime: string
   hasNightSection: boolean
+  // nutrition prefs
+  showNutrition: boolean
+  gelBrand: GelBrand
+  barBrand: BarBrand
+  electrolyteBrand: ElectrolyteBrand
+  stomachSensitivity: StomachSensitivity
+  solidFoodTolerance: 'none' | 'some' | 'lots'
+  caffeineOk: boolean
 }
 
 const defaultForm: FormState = {
@@ -76,6 +120,42 @@ const defaultForm: FormState = {
   weatherCondition: 'ensoleille',
   startTime: '06:00',
   hasNightSection: false,
+  showNutrition: false,
+  gelBrand: 'maurten',
+  barBrand: 'maurten_bar',
+  electrolyteBrand: 'precision_hydration',
+  stomachSensitivity: 'normal',
+  solidFoodTolerance: 'some',
+  caffeineOk: true,
+}
+
+function ToggleGroup<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (v: T) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map(o => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+            value === o.value
+              ? 'bg-accent/20 border-accent/50 text-accent'
+              : 'bg-surface-2 border-surface-2 text-gray-400 hover:text-white'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 export default function RacesPage() {
@@ -85,6 +165,15 @@ export default function RacesPage() {
   const [gpxStatus, setGpxStatus] = useState<string>('')
   const [gpxAnalysis, setGpxAnalysis] = useState<GpxAnalysis | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const buildNutritionPrefs = (f: FormState): NutritionPreferences => ({
+    gelBrand: f.gelBrand,
+    barBrand: f.barBrand,
+    electrolyteBrand: f.electrolyteBrand,
+    stomachSensitivity: f.stomachSensitivity,
+    solidFoodTolerance: f.solidFoodTolerance,
+    caffeineOk: f.caffeineOk,
+  })
 
   const handleGpxFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -117,7 +206,7 @@ export default function RacesPage() {
       const goalTimeMin = form.goalTimeHours || form.goalTimeMinutes
         ? Number(form.goalTimeHours || 0) * 60 + Number(form.goalTimeMinutes || 0)
         : undefined
-      const analysis = analyzeGpx(pts, profile, specs, goalTimeMin)
+      const analysis = analyzeGpx(pts, profile, specs, goalTimeMin, buildNutritionPrefs(form))
       setGpxAnalysis(analysis)
     }
   }
@@ -159,6 +248,7 @@ export default function RacesPage() {
       ...(goalTimeMin !== undefined && goalTimeMin > 0 ? { goalTimeMin } : {}),
       ...(specs ? { specs } : {}),
       ...(gpxAnalysis ? { gpxAnalysis } : {}),
+      nutritionPrefs: buildNutritionPrefs(form),
     }
 
     addRace(raceData)
@@ -423,6 +513,80 @@ export default function RacesPage() {
                     />
                     <label htmlFor="nightSection" className="text-xs text-gray-300">Section nocturne</label>
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Nutrition preferences section (collapsible) */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, showNutrition: !f.showNutrition }))}
+              className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors font-semibold"
+            >
+              {form.showNutrition ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              Préférences nutrition course (optionnel)
+            </button>
+
+            {form.showNutrition && (
+              <div className="mt-4 space-y-4 border border-surface-2 rounded-lg p-4">
+                <div>
+                  <label className="text-xs text-gray-400 block mb-2">Gel préféré</label>
+                  <ToggleGroup
+                    options={gelBrands}
+                    value={form.gelBrand}
+                    onChange={v => setForm(f => ({ ...f, gelBrand: v }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-2">Barre préférée</label>
+                  <ToggleGroup
+                    options={barBrands}
+                    value={form.barBrand}
+                    onChange={v => setForm(f => ({ ...f, barBrand: v }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-2">Électrolytes</label>
+                  <ToggleGroup
+                    options={electrolyteBrands}
+                    value={form.electrolyteBrand}
+                    onChange={v => setForm(f => ({ ...f, electrolyteBrand: v }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-2">Sensibilité estomac</label>
+                  <ToggleGroup
+                    options={stomachOptions}
+                    value={form.stomachSensitivity}
+                    onChange={v => setForm(f => ({ ...f, stomachSensitivity: v }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-2">Alimentation solide en course</label>
+                  <ToggleGroup
+                    options={solidFoodOptions}
+                    value={form.solidFoodTolerance}
+                    onChange={v => setForm(f => ({ ...f, solidFoodTolerance: v }))}
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="caffeineOk"
+                    checked={form.caffeineOk}
+                    onChange={e => setForm({ ...form, caffeineOk: e.target.checked })}
+                    className="w-4 h-4 accent-accent"
+                  />
+                  <label htmlFor="caffeineOk" className="text-xs text-gray-300">
+                    J'utilise la caféine (gel CAF recommandé à 60-70% de la course)
+                  </label>
                 </div>
               </div>
             )}
