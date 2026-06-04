@@ -5,7 +5,7 @@ import { useTrailStore } from '@/lib/store'
 import RaceCard from '@/components/RaceCard'
 import {
   Race, RaceType, RacePriority, TerrainType, WeatherCondition, RaceSpecs, GpxAnalysis,
-  NutritionPreferences, GelBrand, BarBrand, ElectrolyteBrand, StomachSensitivity,
+  NutritionPreferences, StomachSensitivity,
 } from '@/lib/types'
 import { Plus, Trophy, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { parseGpx, analyzeGpx } from '@/lib/gpx'
@@ -42,25 +42,26 @@ const weatherOptions: { value: WeatherCondition; label: string }[] = [
   { value: 'chaud', label: 'Canicule >30°C' },
 ]
 
-const gelBrands: { value: GelBrand; label: string }[] = [
-  { value: 'maurten', label: 'Maurten Gel 100' },
-  { value: 'sis',     label: 'SiS Go Isotonic' },
-  { value: 'gu',      label: 'GU Energy' },
-  { value: 'generic', label: 'Générique' },
+const gelDoseOptions: { value: number; label: string }[] = [
+  { value: 0,  label: 'Ne prend pas' },
+  { value: 20, label: '20g' },
+  { value: 25, label: '25g' },
+  { value: 30, label: '30g' },
+  { value: 40, label: '40g' },
 ]
 
-const barBrands: { value: BarBrand; label: string }[] = [
-  { value: 'maurten_bar', label: 'Maurten Solid' },
-  { value: 'clif',        label: 'Clif Bar' },
-  { value: 'real_food',   label: 'Alimentation naturelle' },
-  { value: 'mix',         label: 'Mix' },
+const barDoseOptions: { value: number; label: string }[] = [
+  { value: 0,  label: 'Ne prend pas' },
+  { value: 30, label: '30g' },
+  { value: 40, label: '40g' },
+  { value: 50, label: '50g' },
 ]
 
-const electrolyteBrands: { value: ElectrolyteBrand; label: string }[] = [
-  { value: 'precision_hydration', label: 'Precision Hydration 1000' },
-  { value: 'sis_hydro',           label: 'SiS Hydro' },
-  { value: 'maurten_caf',         label: 'Maurten Drink Mix' },
-  { value: 'tabs',                label: 'Comprimés' },
+const drinkDoseOptions: { value: number; label: string }[] = [
+  { value: 0,  label: 'Ne prend pas' },
+  { value: 40, label: '40g' },
+  { value: 60, label: '60g' },
+  { value: 80, label: '80g' },
 ]
 
 const stomachOptions: { value: StomachSensitivity; label: string }[] = [
@@ -95,9 +96,10 @@ interface FormState {
   hasNightSection: boolean
   // nutrition prefs
   showNutrition: boolean
-  gelBrand: GelBrand
-  barBrand: BarBrand
-  electrolyteBrand: ElectrolyteBrand
+  gelCarbsPerDose: number
+  barCarbsPerDose: number
+  drinkCarbsPer500ml: number
+  electrolyteOk: boolean
   stomachSensitivity: StomachSensitivity
   solidFoodTolerance: 'none' | 'some' | 'lots'
   caffeineOk: boolean
@@ -122,16 +124,17 @@ const defaultForm: FormState = {
   startTime: '06:00',
   hasNightSection: false,
   showNutrition: false,
-  gelBrand: 'maurten',
-  barBrand: 'maurten_bar',
-  electrolyteBrand: 'precision_hydration',
+  gelCarbsPerDose: 25,
+  barCarbsPerDose: 0,
+  drinkCarbsPer500ml: 0,
+  electrolyteOk: true,
   stomachSensitivity: 'normal',
   solidFoodTolerance: 'some',
   caffeineOk: true,
   carbsPerHour: 75,
 }
 
-function ToggleGroup<T extends string>({
+function ToggleGroup<T extends string | number>({
   options,
   value,
   onChange,
@@ -144,7 +147,7 @@ function ToggleGroup<T extends string>({
     <div className="flex flex-wrap gap-2">
       {options.map(o => (
         <button
-          key={o.value}
+          key={String(o.value)}
           type="button"
           onClick={() => onChange(o.value)}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
@@ -169,9 +172,10 @@ export default function RacesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const buildNutritionPrefs = (f: FormState): NutritionPreferences => ({
-    gelBrand: f.gelBrand,
-    barBrand: f.barBrand,
-    electrolyteBrand: f.electrolyteBrand,
+    gelCarbsPerDose: f.gelCarbsPerDose,
+    barCarbsPerDose: f.barCarbsPerDose,
+    drinkCarbsPer500ml: f.drinkCarbsPer500ml,
+    electrolyteOk: f.electrolyteOk,
     stomachSensitivity: f.stomachSensitivity,
     solidFoodTolerance: f.solidFoodTolerance,
     caffeineOk: f.caffeineOk,
@@ -535,30 +539,43 @@ export default function RacesPage() {
             {form.showNutrition && (
               <div className="mt-4 space-y-4 border border-surface-2 rounded-lg p-4">
                 <div>
-                  <label className="text-xs text-gray-400 block mb-2">Gel préféré</label>
+                  <label className="text-xs text-gray-400 block mb-2">Gel — glucides par dose</label>
                   <ToggleGroup
-                    options={gelBrands}
-                    value={form.gelBrand}
-                    onChange={v => setForm(f => ({ ...f, gelBrand: v }))}
+                    options={gelDoseOptions}
+                    value={form.gelCarbsPerDose}
+                    onChange={v => setForm(f => ({ ...f, gelCarbsPerDose: v }))}
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-400 block mb-2">Barre préférée</label>
+                  <label className="text-xs text-gray-400 block mb-2">Barre — glucides par dose</label>
                   <ToggleGroup
-                    options={barBrands}
-                    value={form.barBrand}
-                    onChange={v => setForm(f => ({ ...f, barBrand: v }))}
+                    options={barDoseOptions}
+                    value={form.barCarbsPerDose}
+                    onChange={v => setForm(f => ({ ...f, barCarbsPerDose: v }))}
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-400 block mb-2">Électrolytes</label>
+                  <label className="text-xs text-gray-400 block mb-2">Boisson énergétique — glucides par 500ml</label>
                   <ToggleGroup
-                    options={electrolyteBrands}
-                    value={form.electrolyteBrand}
-                    onChange={v => setForm(f => ({ ...f, electrolyteBrand: v }))}
+                    options={drinkDoseOptions}
+                    value={form.drinkCarbsPer500ml}
+                    onChange={v => setForm(f => ({ ...f, drinkCarbsPer500ml: v }))}
                   />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="electrolyteOk"
+                    checked={form.electrolyteOk}
+                    onChange={e => setForm({ ...form, electrolyteOk: e.target.checked })}
+                    className="w-4 h-4 accent-accent"
+                  />
+                  <label htmlFor="electrolyteOk" className="text-xs text-gray-300">
+                    Électrolytes (sodium) — comprimé dans 500ml eau
+                  </label>
                 </div>
 
                 <div>

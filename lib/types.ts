@@ -92,6 +92,7 @@ export interface RaceNutritionCheckpoint {
   gels: number
   gelProduct: string
   barProduct: string
+  drinkProduct: string
   electrolyteProduct: string
   timing: 'before_climb' | 'at_summit' | 'on_descent' | 'checkpoint' | 'regular'
   urgency: 'critical' | 'important' | 'routine'
@@ -130,13 +131,18 @@ export type ElectrolyteBrand = 'precision_hydration' | 'sis_hydro' | 'maurten_ca
 export type StomachSensitivity = 'sensitive' | 'normal' | 'iron'
 
 export interface NutritionPreferences {
-  gelBrand: GelBrand
-  barBrand: BarBrand
-  electrolyteBrand: ElectrolyteBrand
+  gelCarbsPerDose: number      // 0 = ne prend pas | 20 | 25 | 30 | 40
+  barCarbsPerDose: number      // 0 = ne prend pas | 30 | 40 | 50
+  drinkCarbsPer500ml: number   // 0 = ne prend pas | 40 | 60 | 80
+  electrolyteOk: boolean
   stomachSensitivity: StomachSensitivity
   solidFoodTolerance: 'none' | 'some' | 'lots'
   caffeineOk: boolean
   carbsPerHour: number  // g/h target: 60 | 75 | 90 | 100
+  // Keep old fields as optional for backward compat
+  gelBrand?: GelBrand
+  barBrand?: BarBrand
+  electrolyteBrand?: ElectrolyteBrand
 }
 
 export interface GelProduct {

@@ -561,15 +561,26 @@ export default function GpxStrategyModal({ race, onClose }: Props) {
                 <div className="bg-surface rounded-xl p-4">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Préférences nutrition</h3>
                   <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
-                      Gel : {race.nutritionPrefs.gelBrand}
-                    </span>
-                    <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
-                      Barre : {race.nutritionPrefs.barBrand}
-                    </span>
-                    <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
-                      Électrolytes : {race.nutritionPrefs.electrolyteBrand}
-                    </span>
+                    {race.nutritionPrefs.gelCarbsPerDose > 0 && (
+                      <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
+                        Gel : {race.nutritionPrefs.gelCarbsPerDose}g/dose
+                      </span>
+                    )}
+                    {race.nutritionPrefs.barCarbsPerDose > 0 && (
+                      <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
+                        Barre : {race.nutritionPrefs.barCarbsPerDose}g/dose
+                      </span>
+                    )}
+                    {race.nutritionPrefs.drinkCarbsPer500ml > 0 && (
+                      <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
+                        Boisson : {race.nutritionPrefs.drinkCarbsPer500ml}g/500ml
+                      </span>
+                    )}
+                    {race.nutritionPrefs.electrolyteOk && (
+                      <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
+                        Électrolytes : ✓
+                      </span>
+                    )}
                     <span className="bg-surface-2 rounded px-2 py-1 text-gray-300">
                       Estomac : {race.nutritionPrefs.stomachSensitivity}
                     </span>
@@ -609,6 +620,7 @@ export default function GpxStrategyModal({ race, onClose }: Props) {
                       <th className="text-left py-2 pr-3">Terrain</th>
                       <th className="text-left py-2 pr-3">Urgence</th>
                       <th className="text-left py-2 pr-3">Produit gel</th>
+                      <th className="text-left py-2 pr-3">Boisson / Barre</th>
                       <th className="text-left py-2 pr-3">Électrolytes</th>
                       <th className="text-left py-2 pr-3">Glucides</th>
                       <th className="text-left py-2 pr-3">Eau</th>
@@ -634,6 +646,7 @@ export default function GpxStrategyModal({ race, onClose }: Props) {
                             </span>
                           </td>
                           <td className="py-2 pr-3 text-gray-300 max-w-[180px] text-[11px]">{cp.gelProduct}</td>
+                          <td className="py-2 pr-3 text-gray-400 max-w-[140px] text-[11px]">{cp.drinkProduct || cp.barProduct || '—'}</td>
                           <td className="py-2 pr-3 text-gray-400 max-w-[160px] text-[11px]">{cp.electrolyteProduct}</td>
                           <td className="py-2 pr-3 text-gray-300 font-mono">{cp.carbsG}g</td>
                           <td className="py-2 pr-3 text-gray-300 font-mono">{cp.waterMl}ml</td>

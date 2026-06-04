@@ -11,9 +11,6 @@ import {
   GradientClass,
   RaceKeyWaypoint,
   NutritionPreferences,
-  GelBrand,
-  BarBrand,
-  ElectrolyteBrand,
 } from './types'
 import { computeAthleteZonePaces } from './training'
 
@@ -88,24 +85,14 @@ export function parseGpx(gpxString: string): GpxPoint[] {
     prevLon = lon
   }
 
-  // 5-point moving average elevation smoothing
-  const smoothed = raw.map((p, i) => {
-    const start = Math.max(0, i - 2)
-    const end = Math.min(raw.length - 1, i + 2)
-    const count = end - start + 1
-    let sum = 0
-    for (let j = start; j <= end; j++) sum += raw[j].ele
-    return { ...p, ele: sum / count }
-  })
-
-  // Thin to max 800 points
-  if (smoothed.length <= 800) return smoothed
-  const step = smoothed.length / 800
+  // Thin to max 800 points (keep raw elevation values — no smoothing)
+  if (raw.length <= 800) return raw
+  const step = raw.length / 800
   const thinned: GpxPoint[] = []
   for (let i = 0; i < 800; i++) {
-    thinned.push(smoothed[Math.round(i * step)])
+    thinned.push(raw[Math.round(i * step)])
   }
-  thinned[799] = smoothed[smoothed.length - 1]
+  thinned[799] = raw[raw.length - 1]
   return thinned
 }
 
@@ -133,31 +120,7 @@ function getElevationAtDist(points: GpxPoint[], distKm: number): number {
   return points[points.length - 1]?.ele ?? 0
 }
 
-// Nutrition product helpers
-interface GelData { name: string; carbsG: number; sodiumMg: number; needsWater: boolean; hasCaffeine?: boolean }
-interface BarData { name: string; carbsG: number; notes: string }
-interface ElectrolyteData { name: string; sodiumMg: number; notes: string }
-
-const GEL_PRODUCTS: Record<GelBrand, GelData> = {
-  maurten:  { name: 'Maurten Gel 100',      carbsG: 25, sodiumMg: 55,  needsWater: false },
-  sis:      { name: 'SiS Go Isotonic',       carbsG: 22, sodiumMg: 118, needsWater: false },
-  gu:       { name: 'GU Energy Gel',         carbsG: 22, sodiumMg: 60,  needsWater: true  },
-  generic:  { name: 'Gel énergétique',       carbsG: 22, sodiumMg: 50,  needsWater: true  },
-}
-
-const BAR_PRODUCTS: Record<BarBrand, BarData> = {
-  maurten_bar: { name: 'Maurten Solid 225',      carbsG: 48, notes: 'Utiliser <8h de course' },
-  clif:        { name: 'Clif Bar',               carbsG: 44, notes: 'Facilement mâchable' },
-  real_food:   { name: 'Alimentation solide',    carbsG: 40, notes: 'Riz, banane, dattes, pain' },
-  mix:         { name: 'Mix gels + barres',       carbsG: 35, notes: 'Variété selon les ravitaillements' },
-}
-
-const ELECTROLYTE_PRODUCTS: Record<ElectrolyteBrand, ElectrolyteData> = {
-  precision_hydration: { name: 'Precision Hydration 1000', sodiumMg: 1000, notes: 'Par comprimé dans 500ml' },
-  sis_hydro:           { name: 'SiS Hydro Tab',            sodiumMg: 360,  notes: 'Par comprimé dans 500ml' },
-  maurten_caf:         { name: 'Maurten Drink Mix 320',    sodiumMg: 170,  notes: 'Boisson complète 80g carbs' },
-  tabs:                { name: 'Comprimés génériques',     sodiumMg: 400,  notes: 'Comprimé dans 500ml' },
-}
+// (product lookup tables removed — now using dose-based preferences directly)
 
 // ─── Main analyzeGpx ──────────────────────────────────────────────────────────
 export function analyzeGpx(
@@ -186,7 +149,7 @@ export function analyzeGpx(
 
   const zonePaces = computeAthleteZonePaces(profile)
 
-  // Elevation stats
+  // Elevation stats — only count changes > 2m to filter GPS noise
   let elevGain = 0
   let elevLoss = 0
   let maxElev = points[0].ele
@@ -194,70 +157,91 @@ export function analyzeGpx(
 
   for (let i = 1; i < points.length; i++) {
     const diff = points[i].ele - points[i - 1].ele
-    if (diff > 0) elevGain += diff
-    else elevLoss += Math.abs(diff)
+    if (diff > 2) elevGain += diff
+    else if (diff < -2) elevLoss += Math.abs(diff)
     if (points[i].ele > maxElev) maxElev = points[i].ele
     if (points[i].ele < minElev) minElev = points[i].ele
   }
 
   const totalDist = points[points.length - 1].distFromStartKm
 
-  // ── Build per-point gradients then group into segments ──────────────────────
-  interface RawSeg {
-    startDistKm: number
-    endDistKm: number
-    distKm: number
-    elevChange: number
-    gradient: number
-    gradientClass: GradientClass
+  // ── Rolling 200m backward window gradient per point ──────────────────────
+  function computePointGradients(pts: GpxPoint[]): number[] {
+    const WINDOW_M = 200
+    const grads: number[] = []
+    for (let i = 0; i < pts.length; i++) {
+      const cur = pts[i]
+      // Find reference point ~WINDOW_M behind
+      let ref = pts[0]
+      for (let j = i - 1; j >= 0; j--) {
+        if ((cur.distFromStartKm - pts[j].distFromStartKm) * 1000 >= WINDOW_M) {
+          ref = pts[j]
+          break
+        }
+      }
+      const distM = (cur.distFromStartKm - ref.distFromStartKm) * 1000
+      if (distM < 10) {
+        // not enough distance yet — use forward window
+        let fwd = pts[pts.length - 1]
+        for (let j = i + 1; j < pts.length; j++) {
+          if ((pts[j].distFromStartKm - cur.distFromStartKm) * 1000 >= WINDOW_M) {
+            fwd = pts[j]
+            break
+          }
+        }
+        const fwdDistM = (fwd.distFromStartKm - cur.distFromStartKm) * 1000
+        grads.push(fwdDistM > 10 ? ((fwd.ele - cur.ele) / fwdDistM) * 100 : 0)
+      } else {
+        grads.push(((cur.ele - ref.ele) / distM) * 100)
+      }
+    }
+    return grads
   }
 
-  const rawSegs: RawSeg[] = []
-  for (let i = 1; i < points.length; i++) {
-    const distKm = points[i].distFromStartKm - points[i - 1].distFromStartKm
-    if (distKm < 0.001) continue
-    const elevChange = points[i].ele - points[i - 1].ele
-    const gradientPct = (elevChange / (distKm * 1000)) * 100
-    const gc = classifyGradient(gradientPct)
-    rawSegs.push({
-      startDistKm: points[i - 1].distFromStartKm,
-      endDistKm: points[i].distFromStartKm,
-      distKm,
-      elevChange,
-      gradient: gradientPct,
-      gradientClass: gc,
-    })
-  }
+  // Assign gradient class to each point
+  const pointGrads = computePointGradients(points)
+  const pointClasses = pointGrads.map(g => classifyGradient(g))
 
-  // Merge adjacent same-class segments; absorb tiny (<300m) segments into previous
+  // Build segments: consecutive runs of same gradient class, then merge adjacent same-class or tiny (<200m)
   const merged: GpxSegment[] = []
-  for (const rs of rawSegs) {
-    const last = merged[merged.length - 1]
-    if (last && last.gradientClass === rs.gradientClass) {
-      last.endDistKm = rs.endDistKm
-      last.distanceKm += rs.distKm
-      last.elevationChange += rs.elevChange
-      last.gradient = (last.elevationChange / (last.distanceKm * 1000)) * 100
-    } else if (last && rs.distKm < 0.3) {
-      // tiny segment — absorb into previous
-      last.endDistKm = rs.endDistKm
-      last.distanceKm += rs.distKm
-      last.elevationChange += rs.elevChange
-      last.gradient = (last.elevationChange / (last.distanceKm * 1000)) * 100
-      last.gradientClass = classifyGradient(last.gradient)
-      last.type = gradientClassToLegacy(last.gradientClass)
-    } else {
-      merged.push({
-        startDistKm: rs.startDistKm,
-        endDistKm: rs.endDistKm,
-        distanceKm: rs.distKm,
-        elevationChange: rs.elevChange,
-        gradient: rs.gradient,
-        gradientClass: rs.gradientClass,
-        type: gradientClassToLegacy(rs.gradientClass),
-        avgPaceForProfile: '',
-        expectedTimeMin: 0,
-      })
+  let runStart = 0
+
+  for (let i = 1; i <= points.length; i++) {
+    const isLast = i === points.length
+    const classChanged = !isLast && pointClasses[i] !== pointClasses[runStart]
+
+    if (classChanged || isLast) {
+      const runEnd = isLast ? points.length - 1 : i - 1
+      const gc = pointClasses[runStart]
+      const distKm = points[runEnd].distFromStartKm - points[runStart].distFromStartKm
+      const elevChange = points[runEnd].ele - points[runStart].ele
+      const gradient = distKm > 0.001 ? (elevChange / (distKm * 1000)) * 100 : 0
+
+      const last = merged[merged.length - 1]
+      if (last && (last.gradientClass === gc || distKm < 0.2)) {
+        last.endDistKm = points[runEnd].distFromStartKm
+        last.distanceKm += distKm
+        last.elevationChange += elevChange
+        last.gradient = last.distanceKm > 0.001
+          ? (last.elevationChange / (last.distanceKm * 1000)) * 100
+          : 0
+        last.gradientClass = classifyGradient(last.gradient)
+        last.type = gradientClassToLegacy(last.gradientClass)
+      } else {
+        merged.push({
+          startDistKm: points[runStart].distFromStartKm,
+          endDistKm: points[runEnd].distFromStartKm,
+          distanceKm: distKm,
+          elevationChange: elevChange,
+          gradient,
+          gradientClass: gc,
+          type: gradientClassToLegacy(gc),
+          avgPaceForProfile: '',
+          expectedTimeMin: 0,
+        })
+      }
+
+      runStart = i
     }
   }
 
@@ -464,18 +448,22 @@ export function analyzeGpx(
   const nutritionCheckpoints: RaceNutritionCheckpoint[] = []
 
   const prefs: NutritionPreferences = nutritionPrefs ?? {
-    gelBrand: 'maurten',
-    barBrand: 'maurten_bar',
-    electrolyteBrand: 'precision_hydration',
+    gelCarbsPerDose: 25,
+    barCarbsPerDose: 0,
+    drinkCarbsPer500ml: 0,
+    electrolyteOk: true,
     stomachSensitivity: 'normal',
     solidFoodTolerance: 'some',
     caffeineOk: true,
     carbsPerHour: 75,
   }
 
-  const gelData = GEL_PRODUCTS[prefs.gelBrand]
-  const barData = BAR_PRODUCTS[prefs.barBrand]
-  const elecData = ELECTROLYTE_PRODUCTS[prefs.electrolyteBrand]
+  const gelCarbsPerDose = prefs.gelCarbsPerDose ?? 25
+  const barCarbsPerDose = prefs.barCarbsPerDose ?? 0
+  const drinkCarbsPer500ml = prefs.drinkCarbsPer500ml ?? 0
+  const useGel = gelCarbsPerDose > 0
+  const useBar = barCarbsPerDose > 0
+  const useDrink = drinkCarbsPer500ml > 0
 
   const kcalPerHour =
     profile.level === 'elite' ? 750
@@ -499,8 +487,8 @@ export function analyzeGpx(
   const sodiumMgPerHour = isHot ? 840 : 600
 
   // Build nutrition timing around terrain awareness
-  // Place checkpoints at ~50min intervals, adjusted for terrain
-  const nutritionIntervalMin = prefs.stomachSensitivity === 'sensitive' ? 55 : 45
+  // Place checkpoints every 20-40 min depending on race duration
+  const nutritionIntervalMin = Math.max(20, Math.min(40, finalEstimated / 5))
   let nextNutrTime = nutritionIntervalMin
   let cumulTimeForNutr = 0
   let cumulCalories = 0
@@ -519,7 +507,9 @@ export function analyzeGpx(
       const carbsG = Math.round(carbsPerHour * intervalHours)
       const waterMl = Math.round(waterMlPerHour * intervalHours)
       const sodiumMg = Math.round(sodiumMgPerHour * intervalHours)
-      const gels = Math.ceil(carbsG / gelData.carbsG)
+      const gemsNeeded = useGel ? Math.ceil(carbsG / gelCarbsPerDose) : 0
+      const actualGelCarbs = gemsNeeded * gelCarbsPerDose
+      const gels = gemsNeeded
       const caloriesToConsume = Math.round(carbsG * 4)
 
       // Determine timing type
@@ -558,23 +548,31 @@ export function analyzeGpx(
       const timeToFinish = finalEstimated - nextNutrTime
       const useCaffeine = prefs.caffeineOk && !caffeineUsed && racePct >= 0.60 && racePct <= 0.75 && timeToFinish > 120
 
-      let gelProduct: string
-      if (timing === 'at_summit') {
-        gelProduct = `${gels}× ${gelData.name} (${carbsG}g glucides) — eau uniquement`
-      } else if (useCaffeine) {
-        caffeineUsed = true
-        gelProduct = `${gels}× ${gelData.name} CAF 100 (${carbsG}g glucides + caféine)`
-      } else {
-        gelProduct = `${gels}× ${gelData.name} (${carbsG}g glucides)`
+      let gelProduct = ''
+      if (useGel) {
+        if (timing === 'at_summit') {
+          gelProduct = `${gels}× gel ${gelCarbsPerDose}g (= ${actualGelCarbs}g glucides) — eau uniquement`
+        } else if (useCaffeine) {
+          caffeineUsed = true
+          gelProduct = `${gels}× gel ${gelCarbsPerDose}g CAF (= ${actualGelCarbs}g glucides + caféine)`
+        } else {
+          gelProduct = `${gels}× gel ${gelCarbsPerDose}g (= ${actualGelCarbs}g glucides)`
+        }
       }
-      if (gelData.needsWater) gelProduct += ' + eau'
 
       let barProduct = ''
-      if (useBarInstead && timing !== 'at_summit' && timing !== 'on_descent') {
-        barProduct = `½ ${barData.name} (${Math.round(barData.carbsG / 2)}g glucides) — ${barData.notes}`
+      if (useBar && useBarInstead && timing !== 'at_summit' && timing !== 'on_descent') {
+        barProduct = `1× barre ${barCarbsPerDose}g glucides`
       }
 
-      const electrolyteProduct = `1 ${elecData.name} dans 500ml eau (${elecData.sodiumMg}mg sodium) — ${elecData.notes}`
+      let drinkProduct = ''
+      if (useDrink) {
+        drinkProduct = `500ml boisson (${drinkCarbsPer500ml}g glucides)`
+      }
+
+      const electrolyteProduct = prefs.electrolyteOk
+        ? `Comprimé électrolyte (sodium) dans 500ml eau`
+        : ''
 
       nutritionCheckpoints.push({
         distanceKm: Math.round(distAtCheckpoint * 10) / 10,
@@ -587,10 +585,11 @@ export function analyzeGpx(
         gels,
         gelProduct,
         barProduct,
+        drinkProduct,
         electrolyteProduct,
         timing,
         urgency,
-        recommendation: notes || `${gels} gel${gels > 1 ? 's' : ''} + ${waterMl}ml eau`,
+        recommendation: notes || (useGel ? `${gels} gel${gels > 1 ? 's' : ''} + ${waterMl}ml eau` : `${waterMl}ml eau`),
       })
 
       nextNutrTime += nutritionIntervalMin
