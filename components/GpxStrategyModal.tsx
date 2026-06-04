@@ -135,32 +135,46 @@ function ElevationChart({ gpx }: { gpx: GpxAnalysis }) {
     if (touch) setTooltip(getSvgData(touch.clientX))
   }, [getSvgData])
 
-  // Build colored segment fills
-  const segmentFills = gpx.segments.map(seg => {
-    const segPts = pts.filter(p => p.distFromStartKm >= seg.startDistKm - 0.01 && p.distFromStartKm <= seg.endDistKm + 0.01)
-    if (segPts.length < 2) return null
-    const color = GRADIENT_COLORS[seg.gradientClass]?.hex ?? '#22c55e'
+  // ── Assign a gradient class color to each raw point based on the segment it belongs to ──
+  // This avoids empty segments (too few points per segment) by working point-by-point
+  type ColoredRun = { color: string; points: { x: number; y: number }[] }
+  const coloredRuns: ColoredRun[] = []
 
-    // Line path
-    const linePath = segPts.map((p, i) =>
-      `${i === 0 ? 'M' : 'L'}${xScale(p.distFromStartKm).toFixed(1)},${yScale(p.ele).toFixed(1)}`
-    ).join(' ')
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i]
+    // Find the segment that contains this point
+    const seg = gpx.segments.find(
+      s => p.distFromStartKm >= s.startDistKm - 0.001 && p.distFromStartKm <= s.endDistKm + 0.001
+    ) ?? gpx.segments[gpx.segments.length - 1]
 
-    // Fill area
-    const first = segPts[0]
-    const last2 = segPts[segPts.length - 1]
-    const fillPath = [
-      linePath,
-      `L${xScale(last2.distFromStartKm).toFixed(1)},${H}`,
-      `L${xScale(first.distFromStartKm).toFixed(1)},${H}`,
-      'Z',
-    ].join(' ')
+    const gc = seg?.gradientClass ?? 'flat'
+    const color = GRADIENT_COLORS[gc]?.hex ?? '#22c55e'
+    const px = xScale(p.distFromStartKm)
+    const py = yScale(p.ele)
 
+    const last = coloredRuns[coloredRuns.length - 1]
+    if (last && last.color === color) {
+      last.points.push({ x: px, y: py })
+    } else {
+      // Start new run; include last point of previous run for continuity
+      const carry = last?.points[last.points.length - 1]
+      coloredRuns.push({ color, points: carry ? [carry, { x: px, y: py }] : [{ x: px, y: py }] })
+    }
+  }
+
+  // Single background fill (dark, covers entire area)
+  const bgFillPath = pts.length >= 2 ? [
+    pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(p.distFromStartKm).toFixed(1)},${yScale(p.ele).toFixed(1)}`).join(' '),
+    `L${xScale(pts[pts.length - 1].distFromStartKm).toFixed(1)},${H}`,
+    `L${xScale(pts[0].distFromStartKm).toFixed(1)},${H}`,
+    'Z',
+  ].join(' ') : ''
+
+  // Colored line strokes per run
+  const coloredStrokes = coloredRuns.filter(r => r.points.length >= 2).map((run, ri) => {
+    const d = run.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
     return (
-      <g key={`${seg.startDistKm}-${seg.endDistKm}`}>
-        <path d={fillPath} fill={`${color}18`} />
-        <path d={linePath} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      </g>
+      <path key={ri} d={d} fill="none" stroke={run.color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
     )
   })
 
@@ -243,8 +257,11 @@ function ElevationChart({ gpx }: { gpx: GpxAnalysis }) {
           onTouchMove={handleTouchMove}
           onTouchEnd={() => setTooltip(null)}
         >
-          {/* Segment fills */}
-          {segmentFills}
+          {/* Background fill (single dark area) */}
+          {bgFillPath && <path d={bgFillPath} fill="#1e293b60" />}
+
+          {/* Colored strokes per gradient class */}
+          {coloredStrokes}
 
           {/* Waypoint markers */}
           {waypointMarkers}

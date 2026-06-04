@@ -470,6 +470,7 @@ export function analyzeGpx(
     stomachSensitivity: 'normal',
     solidFoodTolerance: 'some',
     caffeineOk: true,
+    carbsPerHour: 75,
   }
 
   const gelData = GEL_PRODUCTS[prefs.gelBrand]
@@ -482,12 +483,14 @@ export function analyzeGpx(
     : profile.level === 'intermediaire' ? 550
     : 450
 
-  // Carbs target per hour based on race duration
+  // Use runner's own carbs/hour target if set, otherwise auto-compute by duration
   let carbsPerHour: number
-  if (finalEstimated < 180) carbsPerHour = 65       // <3h: 60-75
-  else if (finalEstimated < 360) carbsPerHour = 80  // 3-6h: 75-90
-  else if (finalEstimated < 720) carbsPerHour = 90  // 6-12h: 80-100
-  else carbsPerHour = 70                             // >12h: 60-80 (gut fatigue)
+  if (prefs.carbsPerHour && prefs.carbsPerHour > 0) {
+    carbsPerHour = prefs.carbsPerHour
+  } else if (finalEstimated < 180) carbsPerHour = 65
+  else if (finalEstimated < 360) carbsPerHour = 80
+  else if (finalEstimated < 720) carbsPerHour = 90
+  else carbsPerHour = 70
 
   // Adjust for stomach sensitivity
   if (prefs.stomachSensitivity === 'sensitive') carbsPerHour = Math.round(carbsPerHour * 0.85)

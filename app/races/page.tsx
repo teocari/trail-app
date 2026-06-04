@@ -101,6 +101,7 @@ interface FormState {
   stomachSensitivity: StomachSensitivity
   solidFoodTolerance: 'none' | 'some' | 'lots'
   caffeineOk: boolean
+  carbsPerHour: number
 }
 
 const defaultForm: FormState = {
@@ -127,6 +128,7 @@ const defaultForm: FormState = {
   stomachSensitivity: 'normal',
   solidFoodTolerance: 'some',
   caffeineOk: true,
+  carbsPerHour: 75,
 }
 
 function ToggleGroup<T extends string>({
@@ -173,6 +175,7 @@ export default function RacesPage() {
     stomachSensitivity: f.stomachSensitivity,
     solidFoodTolerance: f.solidFoodTolerance,
     caffeineOk: f.caffeineOk,
+    carbsPerHour: f.carbsPerHour,
   })
 
   const handleGpxFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -574,6 +577,35 @@ export default function RacesPage() {
                     value={form.solidFoodTolerance}
                     onChange={v => setForm(f => ({ ...f, solidFoodTolerance: v }))}
                   />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-2">
+                    Apport en glucides cible —{' '}
+                    <span className="text-white font-semibold">{form.carbsPerHour}g/heure</span>
+                    <span className="text-gray-500 ml-2">
+                      {form.carbsPerHour <= 60 ? '(course <3h ou estomac sensible)' :
+                       form.carbsPerHour <= 75 ? '(trail standard 3-6h)' :
+                       form.carbsPerHour <= 90 ? '(ultra 6-12h, recommandé élite)' :
+                       '(ultra >12h, maximum toléré avec Maurten/SiS)'}
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    {[60, 75, 90, 100].map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, carbsPerHour: v }))}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-all ${
+                          form.carbsPerHour === v
+                            ? 'bg-accent text-black border-accent'
+                            : 'bg-surface-2 text-gray-400 border-surface-2 hover:text-white'
+                        }`}
+                      >
+                        {v}g/h
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3">

@@ -136,6 +136,7 @@ export interface NutritionPreferences {
   stomachSensitivity: StomachSensitivity
   solidFoodTolerance: 'none' | 'some' | 'lots'
   caffeineOk: boolean
+  carbsPerHour: number  // g/h target: 60 | 75 | 90 | 100
 }
 
 export interface GelProduct {

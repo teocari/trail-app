@@ -31,6 +31,7 @@ interface TrailStore {
   applyAdaptation: (weekNumber: number, multiplier: number) => void
   syncToCloud: () => Promise<void>
   loadFromCloud: (userId: string) => Promise<void>
+  clearUserData: () => void
 }
 
 export const useTrailStore = create<TrailStore>()(
@@ -86,6 +87,10 @@ export const useTrailStore = create<TrailStore>()(
         const { races, profile } = get()
         const plan = generateTrainingPlan(races, TODAY, profile ?? undefined)
         set({ trainingWeeks: plan })
+      },
+
+      clearUserData: () => {
+        set({ profile: null, races: [], trainingWeeks: [], userId: null })
       },
 
       applyAdaptation: (weekNumber, multiplier) => {

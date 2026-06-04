@@ -19,14 +19,14 @@ export default function Navigation() {
   const pathname = usePathname()
   const setShowProfileEdit = useTrailStore(s => s.setShowProfileEdit)
   const userId = useTrailStore(s => s.userId)
-  const setUserId = useTrailStore(s => s.setUserId)
   const isSyncing = useTrailStore(s => s.isSyncing)
   const lastSynced = useTrailStore(s => s.lastSynced)
+  const clearUserData = useTrailStore(s => s.clearUserData)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
-    setUserId(null)
+    clearUserData() // resets profile → triggers onboarding screen
   }
 
   // Extract a short email display
