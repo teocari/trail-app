@@ -46,7 +46,9 @@ const LEVELS: { value: RunnerLevel; label: string; sub: string; weeklyKm: string
 
 export default function Onboarding() {
   const { setProfile } = useTrailStore()
-  const [step, setStep] = useState(0)
+  const userId = useTrailStore(s => s.userId)
+  // If already authenticated, skip auth screen (step 0) and go to profile setup
+  const [step, setStep] = useState(userId ? 1 : 0)
   const [showAuth, setShowAuth] = useState(false)
   const [authTab, setAuthTab] = useState<'login' | 'signup'>('signup')
 
@@ -67,7 +69,16 @@ export default function Onboarding() {
   }
 
   if (showAuth) {
-    return <AuthModal onClose={() => setShowAuth(false)} defaultTab={authTab} />
+    return (
+      <AuthModal
+        onClose={() => {
+          setShowAuth(false)
+          // After auth, go directly to profile setup (skip auth screen)
+          setStep(1)
+        }}
+        defaultTab={authTab}
+      />
+    )
   }
 
   const handleFinish = () => {
@@ -171,7 +182,12 @@ export default function Onboarding() {
             <div className="space-y-5">
               <div>
                 <h2 className="text-lg font-bold text-white">Bienvenue sur TrailElite 👋</h2>
-                <p className="text-sm text-gray-400 mt-1">Commence par te présenter pour que l'app te reconnaisse.</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  {userId
+                    ? '✅ Connecté — configure ton profil pour démarrer ton plan.'
+                    : 'Commence par te présenter pour que l\'app te reconnaisse.'
+                  }
+                </p>
               </div>
               <div>
                 <label className="text-xs text-gray-400 block mb-1.5">Ton prénom</label>
