@@ -115,10 +115,10 @@ export const useTrailStore = create<TrailStore>()(
         try {
           const data = { profile, races, trainingWeeks }
           await supabase.from('user_data').upsert({
-            user_id: userId,
+            id: userId,
             data,
             updated_at: new Date().toISOString(),
-          }, { onConflict: 'user_id' })
+          }, { onConflict: 'id' })
           set({ lastSynced: new Date().toISOString(), isSyncing: false })
         } catch (err) {
           console.error('Sync to cloud failed:', err)
@@ -131,7 +131,7 @@ export const useTrailStore = create<TrailStore>()(
           const { data, error } = await supabase
             .from('user_data')
             .select('data')
-            .eq('user_id', userId)
+            .eq('id', userId)
             .single()
           if (error || !data?.data) return
           const { profile, races, trainingWeeks } = data.data as {

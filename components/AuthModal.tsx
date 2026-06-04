@@ -59,10 +59,10 @@ export default function AuthModal({ onClose, defaultTab }: AuthModalProps) {
         // Initialize user_data row
         try {
           await supabase.from('user_data').upsert({
-            user_id: data.user.id,
+            id: data.user.id,
             data: {},
             updated_at: new Date().toISOString(),
-          }, { onConflict: 'user_id' })
+          }, { onConflict: 'id' })
         } catch {
           // Non-blocking — table may not exist yet
         }
