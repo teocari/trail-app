@@ -393,6 +393,11 @@ export default function GpxStrategyModal({ race, onClose }: Props) {
           {/* ── TAB 1: Elevation profile ── */}
           {tab === 'profil' && (
             <div className="space-y-4">
+              {/* Warning if analysis might be stale */}
+              <div className="flex items-start gap-2 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg text-xs text-yellow-300">
+                <span>⚠️</span>
+                <span>Si les couleurs ou allures semblent incorrectes, supprime et recrée la course en ré-important le fichier GPX pour bénéficier du calcul de gradient amélioré.</span>
+              </div>
               <ElevationChart gpx={gpx} />
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

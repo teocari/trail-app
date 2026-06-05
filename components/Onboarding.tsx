@@ -62,6 +62,7 @@ export default function Onboarding() {
   const [weeklyElevation, setWeeklyElevation] = useState(3000)
   const [bodyWeightKg, setBodyWeightKg] = useState(65)
   const [preferredRaceType, setPreferredRaceType] = useState<RaceType>('Trail')
+  const [trainingDaysPerWeek, setTrainingDaysPerWeek] = useState(6)
 
   const canNext = () => {
     if (step === 1) return firstName.trim().length > 0
@@ -93,6 +94,7 @@ export default function Onboarding() {
       maxHR,
       bodyWeightKg,
       preferredRaceType,
+      trainingDaysPerWeek,
     }
     setProfile(profile)
   }
@@ -357,6 +359,33 @@ export default function Onboarding() {
                 <div className="flex justify-between text-xs text-gray-600 mt-0.5">
                   <span>0 m</span><span>12 000 m</span>
                 </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-400 block mb-1.5">Jours d'entraînement par semaine</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[3, 4, 5, 6, 7].map(d => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setTrainingDaysPerWeek(d)}
+                      className={`py-2.5 rounded-lg text-sm font-semibold transition-all border ${
+                        trainingDaysPerWeek === d
+                          ? 'bg-accent text-black border-accent'
+                          : 'bg-surface-2 text-gray-400 border-surface-2 hover:text-white'
+                      }`}
+                    >
+                      {d}j
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {trainingDaysPerWeek <= 3 ? 'Amateur — 3 séances clés'
+                   : trainingDaysPerWeek === 4 ? 'Régulier — volume modéré'
+                   : trainingDaysPerWeek === 5 ? 'Sérieux — bon compromis'
+                   : trainingDaysPerWeek === 6 ? 'Avancé — programme complet'
+                   : 'Élite / Pro — entraînement bi-quotidien possible'}
+                </p>
               </div>
 
               <div>

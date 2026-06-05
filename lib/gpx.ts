@@ -104,9 +104,12 @@ function formatPace(secPerKm: number): string {
 }
 
 function parsePaceToSec(paceStr: string): number {
-  const match = paceStr.match(/(\d+):(\d+)/)
-  if (!match) return 360
-  return parseInt(match[1]) * 60 + parseInt(match[2])
+  const matches = Array.from(paceStr.matchAll(/(\d+):(\d+)/g))
+  if (matches.length === 0) return 360
+  const toSec = (m: RegExpMatchArray) => parseInt(m[1]) * 60 + parseInt(m[2])
+  if (matches.length === 1) return toSec(matches[0])
+  // Use midpoint of range for more realistic estimation
+  return Math.round((toSec(matches[0]) + toSec(matches[1])) / 2)
 }
 
 function getElevationAtDist(points: GpxPoint[], distKm: number): number {

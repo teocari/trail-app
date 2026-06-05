@@ -12,6 +12,7 @@ export interface AthleteProfile {
   maxHR: number         // 0 = unknown
   bodyWeightKg: number
   preferredRaceType: RaceType
+  trainingDaysPerWeek: number  // 3 | 4 | 5 | 6 | 7
 }
 
 export interface AthleteZonePaces {

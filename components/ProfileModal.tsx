@@ -13,7 +13,7 @@ const LEVELS: { value: RunnerLevel; label: string }[] = [
 ]
 
 const RACE_TYPES: { value: RaceType; label: string }[] = [
-  { value: 'XC', label: 'Cross-Country' },
+  { value: 'XC', label: 'Course sur route' },
   { value: 'Trail', label: 'Trail' },
   { value: 'Ultra', label: 'Ultra-Trail' },
 ]
@@ -32,6 +32,7 @@ export default function ProfileModal() {
     maxHR: 0,
     bodyWeightKg: 70,
     preferredRaceType: 'Trail',
+    trainingDaysPerWeek: 6,
   })
 
   useEffect(() => {
@@ -146,6 +147,32 @@ export default function ProfileModal() {
                   className="w-full bg-surface-2 border border-surface-2 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
                 />
               </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-gray-400 block mb-1.5">Jours d'entraînement par semaine</label>
+              <div className="grid grid-cols-5 gap-2">
+                {[3, 4, 5, 6, 7].map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setForm({ ...form, trainingDaysPerWeek: d })}
+                    className={`py-2 rounded-lg text-sm font-semibold transition-all border ${
+                      (form.trainingDaysPerWeek ?? 6) === d
+                        ? 'bg-accent text-black border-accent'
+                        : 'bg-surface-2 text-gray-400 border-surface-2 hover:text-white'
+                    }`}
+                  >
+                    {d}j
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {(form.trainingDaysPerWeek ?? 6) <= 3 ? 'Amateur — 3 séances clés'
+                 : (form.trainingDaysPerWeek ?? 6) === 4 ? 'Régulier — volume modéré'
+                 : (form.trainingDaysPerWeek ?? 6) === 5 ? 'Sérieux — bon compromis'
+                 : (form.trainingDaysPerWeek ?? 6) === 6 ? 'Avancé — programme complet'
+                 : 'Élite / Pro — entraînement bi-quotidien possible'}
+              </p>
             </div>
           </section>
 

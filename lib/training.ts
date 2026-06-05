@@ -208,6 +208,76 @@ function getStrengthSession(phase: TrainingPhase): SessionTemplate {
   }
 }
 
+function orderSessionsForWeek(sessions: SessionTemplate[]): SessionTemplate[] {
+  const ls = sessions.filter(s => s.type === 'LS')
+  const hard = sessions.filter(s => s.zone === 'Z4' || s.zone === 'Z5')
+  const strength = sessions.filter(s => s.type === 'S')
+  const recovery = sessions.filter(s => s.type === 'R' || s.zone === 'Z1')
+  const easy = sessions.filter(s =>
+    s.type === 'EF' && s.zone !== 'Z4' && s.zone !== 'Z5'
+  )
+
+  const ordered: (SessionTemplate | null)[] = [null, null, null, null, null, null, null]
+
+  // Sat = LS
+  if (ls[0]) ordered[5] = ls[0]
+  // Sun = R
+  if (recovery[0]) ordered[6] = recovery[0]
+  // Tue = 1st hard
+  if (hard[0]) ordered[1] = hard[0]
+  // Thu = 2nd hard or EF
+  if (hard[1]) ordered[3] = hard[1]
+  else if (easy[1]) ordered[3] = easy[1]
+  // Wed = S or EF (buffer)
+  if (strength[0]) ordered[2] = strength[0]
+  else if (easy[0]) ordered[2] = easy[0]
+  // Mon = EF
+  const remainingEasy = easy.filter(s => !ordered.includes(s))
+  if (remainingEasy[0]) ordered[0] = remainingEasy[0]
+  // Fri = EF or remaining
+  const remaining = [...hard, ...easy, ...strength, ...recovery, ...ls]
+    .filter(s => !ordered.includes(s))
+  if (remaining[0]) ordered[4] = remaining[0]
+
+  // Fill any remaining nulls
+  const allRemaining = sessions.filter(s => !ordered.includes(s))
+  let ri = 0
+  for (let i = 0; i < 7; i++) {
+    if (!ordered[i] && ri < allRemaining.length) {
+      ordered[i] = allRemaining[ri++]
+    }
+  }
+
+  return ordered.filter((s): s is SessionTemplate => s !== null)
+}
+
+function trimToTrainingDays(sessions: SessionTemplate[], days: number): SessionTemplate[] {
+  if (days >= sessions.length) return sessions
+
+  const ls = sessions.find(s => s.type === 'LS')
+  const hard = sessions.filter(s => s.zone === 'Z4' || s.zone === 'Z5')
+  const ef = sessions.filter(s => s.type === 'EF' && s.zone !== 'Z4')
+  const r = sessions.filter(s => s.type === 'R')
+  const str = sessions.filter(s => s.type === 'S')
+
+  const result: SessionTemplate[] = []
+  const addIfRoom = (sess: SessionTemplate | undefined) => {
+    if (sess && result.length < days && !result.includes(sess)) result.push(sess)
+  }
+
+  addIfRoom(ls)
+  addIfRoom(hard[0])
+  ef.forEach(e => addIfRoom(e))
+  r.forEach(rv => addIfRoom(rv))
+  str.forEach(sv => addIfRoom(sv))
+  hard.slice(1).forEach(h => addIfRoom(h))
+
+  // Fill any remaining with whatever's left
+  sessions.forEach(sess => addIfRoom(sess))
+
+  return result.slice(0, days)
+}
+
 function getWeekSessions(
   phase: TrainingPhase,
   weekVolumeKm: number,
@@ -218,6 +288,8 @@ function getWeekSessions(
   targetRace?: Race,
   weeksToTargetRace?: number,
   raceMonth?: number,
+  isDeloadWeek = false,
+  trainingDays = 6,
 ): SessionTemplate[] {
   const efDuration = Math.round((weekVolumeKm * 0.15) / 12 * 60)
   const lsDuration = Math.round((weekVolumeKm * 0.30) / 11 * 60)
@@ -242,27 +314,47 @@ function getWeekSessions(
     : ''
 
   if (phase === 'Taper') {
-    return [
+    const sessions: SessionTemplate[] = [
       { type: 'EF', zone: 'Z2', durationMin: 45, distanceKm: 9, elevationGain: 200, description: `Allure EF : ${p.z2} plat, ${p.uphill8pct} en montée. Pente max 8%. Respiration nasale, jambes légères — aucune accumulation de fatigue.` },
       { type: 'I', zone: 'Z5', durationMin: 50, distanceKm: 10, elevationGain: 100, description: `Échauffement 15min Z1. Puis 6×3min Z5 à ${p.z5} sur plat ou légère côte (4-6%). Récupération 2min Z1 entre chaque. Retour calme 10min. Objectif : maintenir la vivacité neuromusculaire sans fatiguer.` },
       { type: 'R', zone: 'Z1', durationMin: 30, distanceKm: 6, elevationGain: 0, description: `Allure récupération : ${p.z1}. Terrain plat uniquement. FC <60% FCmax. Étirements dynamiques 10min post-course.` },
       { type: 'EF', zone: 'Z2', durationMin: 40, distanceKm: 8, elevationGain: 150, description: `Allure EF douce : ${p.z2} sur plat, marche rapide sur pentes >10%. Sortie mentale : visualiser la course, ne pas forcer.` },
       { type: 'S', zone: 'Z1', durationMin: 30, distanceKm: 0, elevationGain: 0, description: 'Activation neuromusculaire légère : 3×10 squats, 3×10 fentes, 2×30s gainage. Plyométrie douce : skipping léger, montées de genoux. Aucune charge lourde.' },
     ]
+    const ordered = orderSessionsForWeek(sessions)
+    if (isDeloadWeek) {
+      return trimToTrainingDays(ordered.map(s => {
+        if (s.zone === 'Z4' || s.zone === 'Z5') {
+          return { ...s, type: 'EF' as SessionType, zone: 'Z2' as IntensityZone, durationMin: Math.round(s.durationMin * 0.70), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.70)), description: `🔄 SEMAINE DE DÉCHARGE — ${s.description.split(':')[0]} remplacée par EF. Allure ${p.z2} strictement. Volume réduit 30%. Priorité à la récupération.` }
+        }
+        return { ...s, durationMin: Math.round(s.durationMin * 0.85), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.85)) }
+      }), trainingDays)
+    }
+    return trimToTrainingDays(ordered, trainingDays)
   }
 
   if (phase === 'Recovery') {
-    return [
+    const sessions: SessionTemplate[] = [
       { type: 'R', zone: 'Z1', durationMin: 30, distanceKm: 5, elevationGain: 100, description: `Allure : ${p.z1} maximum. Pente <5% uniquement. FC <55% FCmax. Objectif : circulation sanguine et élimination des déchets métaboliques, pas de performance.` },
       { type: 'EF', zone: 'Z1', durationMin: 45, distanceKm: 8, elevationGain: 200, description: `Allure : ${p.z1} plat, marche sur pentes >8%. Pente maximale tolérée : 12%. Focus sur la technique de foulée : attaque médio-pied, cadence ~170 pas/min.` },
       { type: 'S', zone: 'Z1', durationMin: 45, distanceKm: 0, elevationGain: 0, description: 'Renforcement musculaire : 3×15 squats, 3×12 fentes marche, 3×10 step-up, 3×45s gainage frontal/latéral. Proprioception : 3×30s équilibre unipodal sur coussin.' },
       { type: 'R', zone: 'Z1', durationMin: 30, distanceKm: 5, elevationGain: 50, description: 'Footing très doux, terrain souple préféré (chemin en terre). Allure libre, aucune contrainte de rythme. Terminer par 10min d\'étirements passifs mollets + quadriceps.' },
     ]
+    const ordered = orderSessionsForWeek(sessions)
+    if (isDeloadWeek) {
+      return trimToTrainingDays(ordered.map(s => {
+        if (s.zone === 'Z4' || s.zone === 'Z5') {
+          return { ...s, type: 'EF' as SessionType, zone: 'Z2' as IntensityZone, durationMin: Math.round(s.durationMin * 0.70), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.70)), description: `🔄 SEMAINE DE DÉCHARGE — ${s.description.split(':')[0]} remplacée par EF. Allure ${p.z2} strictement. Volume réduit 30%. Priorité à la récupération.` }
+        }
+        return { ...s, durationMin: Math.round(s.durationMin * 0.85), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.85)) }
+      }), trainingDays)
+    }
+    return trimToTrainingDays(ordered, trainingDays)
   }
 
   if (phase === 'Base') {
     const strengthSession = getStrengthSession('Base')
-    return [
+    const sessions: SessionTemplate[] = [
       { type: 'EF', zone: 'Z2', durationMin: efDuration || 60, distanceKm: Math.round(weekVolumeKm * 0.15), elevationGain: Math.round(weekElevation * 0.10), description: `Allure EF : ${p.z2} sur plat, ${p.uphill8pct} en montée (pente 6-10%), marche si >15%. FC cible 65-72% FCmax. Conversation aisée en continu. Cadence cible : 170-175 pas/min. Terrain varié, priorité aux chemins.` },
       { type: 'EF', zone: 'Z2', durationMin: efDuration || 60, distanceKm: Math.round(weekVolumeKm * 0.15), elevationGain: Math.round(weekElevation * 0.10), description: `Allure identique à la 1ère EF (${p.z2} plat). Focus technique : attaque médio-pied, bras relâchés, regard 3-4m en avant. Sur les pentes >8%, raccourcir la foulée et augmenter la cadence plutôt que de ralentir.` },
       { type: 'V', zone: 'Z3', durationMin: 70, distanceKm: Math.round(weekVolumeKm * 0.12), elevationGain: Math.round(weekElevation * 0.25), description: `Échauffement 15min Z1-Z2. Bloc dénivelé : 4×10min de montée soutenue sur pente 12-20%, allure ${p.uphill15pct}, RPE 5-6. Descente technique en récupération (3-4min) à ${p.downhill}. Travail de bâtons si disponibles.` },
@@ -270,6 +362,16 @@ function getWeekSessions(
       { type: 'LS', zone: 'Z2', durationMin: lsDuration || 120, distanceKm: Math.round(weekVolumeKm * 0.30), elevationGain: Math.round(weekElevation * 0.35), description: `Allure conversationnelle stricte : ${p.z2} plat, ${p.uphill15pct} montée, marche rapide (5-6 km/h) sur pentes >18%. Ravitaillement : gel ou barre toutes les 45min + 500ml eau/heure. Dernier tiers : maintenir l'allure malgré la fatigue.` },
       { type: 'R', zone: 'Z1', durationMin: 35, distanceKm: Math.round(weekVolumeKm * 0.08), elevationGain: 100, description: `Allure très lente : ${p.z1}. FC <58% FCmax. 5min de marche d'abord si les jambes sont lourdes. Post-course : 15min d'étirements passifs (mollets, IT band, psoas, quadriceps).` },
     ]
+    const ordered = orderSessionsForWeek(sessions)
+    if (isDeloadWeek) {
+      return trimToTrainingDays(ordered.map(s => {
+        if (s.zone === 'Z4' || s.zone === 'Z5') {
+          return { ...s, type: 'EF' as SessionType, zone: 'Z2' as IntensityZone, durationMin: Math.round(s.durationMin * 0.70), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.70)), description: `🔄 SEMAINE DE DÉCHARGE — ${s.description.split(':')[0]} remplacée par EF. Allure ${p.z2} strictement. Volume réduit 30%. Priorité à la récupération.` }
+        }
+        return { ...s, durationMin: Math.round(s.durationMin * 0.85), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.85)) }
+      }), trainingDays)
+    }
+    return trimToTrainingDays(ordered, trainingDays)
   }
 
   if (phase === 'Build') {
@@ -277,7 +379,7 @@ function getWeekSessions(
     const efOrNorwegian: SessionTemplate = useNorwegianDT
       ? norwegianSession
       : { type: 'EF', zone: 'Z2', durationMin: efDuration || 65, distanceKm: Math.round(weekVolumeKm * 0.14), elevationGain: Math.round(weekElevation * 0.10), description: `EF structuré : 20min Z1 d'échauffement, puis 4×10min légèrement au-dessus Z2 (RPE 4-5, limite basse de ${p.z4}) avec 5min Z1 entre chaque. Retour calme 15min. Pente lors des blocs : 6-8% maximum.` }
-    return [
+    const sessions: SessionTemplate[] = [
       efOrNorwegian,
       { type: 'I', zone: 'Z5', durationMin: iDuration, distanceKm: Math.round(weekVolumeKm * 0.12), elevationGain: Math.round(weekElevation * 0.08), description: `Échauffement 15min Z1-Z2 + gammes. Séance : 8×3min Z5 à ${p.z5} sur plat ou côte 4-6%, récupération 2min trot Z1. Si RPE >9/10 raccourcir à 2min30. Retour calme 10min.` },
       { type: 'V', zone: 'Z4', durationMin: vDuration, distanceKm: Math.round(weekVolumeKm * 0.13), elevationGain: Math.round(weekElevation * 0.28), description: `Échauffement 15min Z1. Côtes longues : 5×8min Z4 sur pente 15-22%, allure ${p.uphill15pct} à ${p.uphill22pct}, RPE 7-8. Descente active en récupération : 4-5min à ${p.downhill}. Bâtons recommandés sur >18% de pente.` },
@@ -286,6 +388,16 @@ function getWeekSessions(
       { type: 'LS', zone: 'Z2', durationMin: lsDuration || 130, distanceKm: Math.round(weekVolumeKm * 0.30), elevationGain: Math.round(weekElevation * 0.38), description: `Sortie longue structurée : 2/3 en Z2 (${p.z2} plat, ${p.uphill8pct} montée). Dernier 1/3 : allure spécifique course cible. Ravitaillement toutes les 40min. Au moins 1000m D+.` },
       { type: 'R', zone: 'Z1', durationMin: 30, distanceKm: Math.round(weekVolumeKm * 0.08), elevationGain: 80, description: `Footing récupération : ${p.z1}, terrain plat ou légèrement vallonné. FC <60% FCmax. Hydratation prioritaire. Auto-massage mollets et quadriceps post-course.` },
     ]
+    const ordered = orderSessionsForWeek(sessions)
+    if (isDeloadWeek) {
+      return trimToTrainingDays(ordered.map(s => {
+        if (s.zone === 'Z4' || s.zone === 'Z5') {
+          return { ...s, type: 'EF' as SessionType, zone: 'Z2' as IntensityZone, durationMin: Math.round(s.durationMin * 0.70), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.70)), description: `🔄 SEMAINE DE DÉCHARGE — ${s.description.split(':')[0]} remplacée par EF. Allure ${p.z2} strictement. Volume réduit 30%. Priorité à la récupération.` }
+        }
+        return { ...s, durationMin: Math.round(s.durationMin * 0.85), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.85)) }
+      }), trainingDays)
+    }
+    return trimToTrainingDays(ordered, trainingDays)
   }
 
   if (phase === 'Specific') {
@@ -293,7 +405,7 @@ function getWeekSessions(
     const efOrNorwegian: SessionTemplate = useNorwegianDT
       ? norwegianSession
       : { type: 'EF', zone: 'Z2', durationMin: efDuration || 70, distanceKm: Math.round(weekVolumeKm * 0.13), elevationGain: Math.round(weekElevation * 0.10), description: `EF matinal technique : allure ${p.z2}. Focus descentes techniques : appuis larges, buste légèrement en avant, regard loin, 3-4 foulées courtes. Sur pentes >20% : descente en lacets courts. Cadence descendante cible : 180-185 pas/min.` }
-    return [
+    const sessions: SessionTemplate[] = [
       efOrNorwegian,
       { type: 'I', zone: 'Z5', durationMin: 80, distanceKm: Math.round(weekVolumeKm * 0.12), elevationGain: Math.round(weekElevation * 0.10), description: `Échauffement 20min. Séance lactique : 10×2min Z5 à ${p.z5} plat ou côte 6-8%, récupération 1min30 Z1. Objectif : maintenir la même allure sur toutes les répétitions. Si chute >5% d'allure, stopper la séance.` },
       { type: 'V', zone: 'Z4', durationMin: 100, distanceKm: Math.round(weekVolumeKm * 0.14), elevationGain: Math.round(weekElevation * 0.30), description: `Bloc dénivelé spécifique : échauffement 15min, puis 2×20min montée continue Z4 sur pente 18-28% à ${p.uphill22pct}, récupération 10min descente technique à ${p.downhill}. Bâtons sur >20%. Travail de marche rapide (buste penché, foulées courtes, bâtons actifs).` },
@@ -302,6 +414,16 @@ function getWeekSessions(
       { type: 'LS', zone: 'Z2', durationMin: lsDuration || 150, distanceKm: Math.round(weekVolumeKm * 0.30), elevationGain: Math.round(weekElevation * 0.40), description: `Sortie longue spécifique course : terrain et dénivelé identiques à la course cible si possible. Allure gestion : ${p.z2} plat, marche rapide sur pentes >18%. Ravitaillement réel pratiqué toutes les 45min. Au moins 2000m D+.` },
       { type: 'R', zone: 'Z1', durationMin: 30, distanceKm: Math.round(weekVolumeKm * 0.08), elevationGain: 50, description: `Récupération active : ${p.z1} maximum, terrain plat. Post-sortie : auto-massage rouleau (IT band 2min/jambe, mollets 2min/jambe), bain froid 10min à 12-15°C si disponible.` },
     ]
+    const ordered = orderSessionsForWeek(sessions)
+    if (isDeloadWeek) {
+      return trimToTrainingDays(ordered.map(s => {
+        if (s.zone === 'Z4' || s.zone === 'Z5') {
+          return { ...s, type: 'EF' as SessionType, zone: 'Z2' as IntensityZone, durationMin: Math.round(s.durationMin * 0.70), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.70)), description: `🔄 SEMAINE DE DÉCHARGE — ${s.description.split(':')[0]} remplacée par EF. Allure ${p.z2} strictement. Volume réduit 30%. Priorité à la récupération.` }
+        }
+        return { ...s, durationMin: Math.round(s.durationMin * 0.85), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.85)) }
+      }), trainingDays)
+    }
+    return trimToTrainingDays(ordered, trainingDays)
   }
 
   // Peak — Feature 2D: Kilian Jornet Protocol LS 3 weeks before race
@@ -317,7 +439,7 @@ function getWeekSessions(
     : Math.round(weekElevation * 0.38)
 
   const strengthSession = getStrengthSession('Specific')
-  return [
+  const peakSessions: SessionTemplate[] = [
     { type: 'EF', zone: 'Z2', durationMin: efDuration || 60, distanceKm: Math.round(weekVolumeKm * 0.13), elevationGain: Math.round(weekElevation * 0.10), description: `EF d'affûtage : allure ${p.z2}. Corps léger et réactif. Écouter les sensations — si les jambes sont légères, maintenir l'allure haute de la fourchette Z2. Si lourd, rester en bas de fourchette. Cadence : 175-180 pas/min.` },
     { type: 'I', zone: 'Z5', durationMin: 65, distanceKm: Math.round(weekVolumeKm * 0.12), elevationGain: Math.round(weekElevation * 0.10), description: `Séance de pointe : échauffement 15min. 6×5min Z5 sur piste ou chemin plat à ${p.z5}, récupération 3min Z1 complet entre chaque. Qualité maximale sur chaque répétition.` },
     { type: 'V', zone: 'Z4', durationMin: 80, distanceKm: Math.round(weekVolumeKm * 0.13), elevationGain: Math.round(weekElevation * 0.28), description: `Répétitions de côtes courtes maximales : échauffement 20min. 10×1min en montée raide (pente 20-30%) à effort Z5, récupération descente lente à ${p.z1} (2min). Technique : attaque énergique, bâtons dynamiques, cadence élevée (~160 pas/min en montée).` },
@@ -326,6 +448,16 @@ function getWeekSessions(
     { type: 'LS', zone: 'Z2', durationMin: lsDuration || 140, distanceKm: lsDistKm, elevationGain: lsElev, description: lsDescription },
     { type: 'R', zone: 'Z1', durationMin: 30, distanceKm: Math.round(weekVolumeKm * 0.08), elevationGain: 50, description: `Récupération totale : ${p.z1}, allure libre. Préparation mentale : visualisation positive de la course, checklist matériel, plan de ravitaillement course.` },
   ]
+  const peakOrdered = orderSessionsForWeek(peakSessions)
+  if (isDeloadWeek) {
+    return trimToTrainingDays(peakOrdered.map(s => {
+      if (s.zone === 'Z4' || s.zone === 'Z5') {
+        return { ...s, type: 'EF' as SessionType, zone: 'Z2' as IntensityZone, durationMin: Math.round(s.durationMin * 0.70), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.70)), description: `🔄 SEMAINE DE DÉCHARGE — ${s.description.split(':')[0]} remplacée par EF. Allure ${p.z2} strictement. Volume réduit 30%. Priorité à la récupération.` }
+      }
+      return { ...s, durationMin: Math.round(s.durationMin * 0.85), distanceKm: Math.max(1, Math.round(s.distanceKm * 0.85)) }
+    }), trainingDays)
+  }
+  return trimToTrainingDays(peakOrdered, trainingDays)
 }
 
 // ─── Feature 3: Multi-Race Periodization ─────────────────────────────────────
@@ -480,6 +612,9 @@ export function generateTrainingPlan(races: Race[], today: Date = new Date(), pr
     const targetVolumeKm = Math.round(baseVol * volumeMultiplier * block.volumeMultiplier)
     const targetElevation = Math.round(baseElev * volumeMultiplier * block.volumeMultiplier)
 
+    const isDeloadWeek = cycleWeek === 3
+    const trainingDays = profile?.trainingDaysPerWeek ?? 6
+
     const sessionTemplates = getWeekSessions(
       phase,
       targetVolumeKm,
@@ -490,6 +625,8 @@ export function generateTrainingPlan(races: Race[], today: Date = new Date(), pr
       block.targetRace,
       block.weeksToTargetRace,
       raceMonth,
+      isDeloadWeek,
+      trainingDays,
     )
 
     const sessions: TrainingSession[] = sessionTemplates.map((tmpl, idx) => {
@@ -509,7 +646,9 @@ export function generateTrainingPlan(races: Race[], today: Date = new Date(), pr
     })
 
     let notes = ''
-    if (cycleWeek === 3) notes = 'Semaine de décharge — réduire l\'intensité, priorité à la récupération'
+    if (isDeloadWeek && phase !== 'Taper' && phase !== 'Recovery') {
+      notes = '🔄 SEMAINE DE DÉCHARGE — Volume réduit 30%, aucune séance Z4/Z5. Récupération, sommeil, nutrition prioritaires.'
+    }
     if (phase === 'Taper') notes = 'Réduction pré-course — conserver la fraîcheur, pas de fatigue'
     if (phase === 'Peak') notes = 'Semaine de pointe — charge maximale, bien récupérer entre les séances'
 

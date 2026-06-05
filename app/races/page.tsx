@@ -20,7 +20,7 @@ const priorityLabels = {
 }
 
 const typeLabels = {
-  XC: 'Cross-Country',
+  XC: 'Course sur route',
   Trail: 'Trail',
   Ultra: 'Ultra-Trail',
 }
